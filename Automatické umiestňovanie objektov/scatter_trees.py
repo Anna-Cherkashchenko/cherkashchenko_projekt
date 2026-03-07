@@ -8,9 +8,11 @@ no_trees_vgroup = "NoTrees"
 
 tree_name = "tree"
 bush_name = "Bush"
+flower_names = ["Yellow Flower", "White Flower"]
 
 tree_collection = "Generated_Trees"
 bush_collection = "Generated_Bushes"
+flower_collection = "Generated_Flowers"
 
 
 def get_or_create_collection(name):
@@ -98,7 +100,7 @@ def scatter_on_terrain(
     if terrain.type != "MESH":
         raise RuntimeError("Terrain must be mesh")
     if src is None:
-        raise RuntimeError("Source object not found")
+        raise RuntimeError(f"Source object '{source_obj_name}' not found")
     if max_scale < min_scale:
         raise RuntimeError("Invalid scale range")
 
@@ -130,6 +132,77 @@ def scatter_on_terrain(
             if any((loc_vec - p).length < min_distance for p in placed_positions):
                 continue
             placed_positions.append(loc_vec)
+
+        new_obj = copy_with_children(src, col)
+        new_obj.location = loc
+        new_obj.rotation_euler[2] = radians(random.uniform(0, 360))
+
+        s = random.uniform(min_scale, max_scale)
+        new_obj.scale = (s, s, s)
+
+        placed += 1
+
+    return placed, tries
+
+
+def scatter_flowers_on_terrain(
+    source_obj_names,
+    target_collection_name,
+    count,
+    area,
+    z_start,
+    min_scale,
+    max_scale,
+    use_vgroup,
+    path_threshold,
+    min_distance
+):
+    terrain = bpy.data.objects.get(terrain_name)
+
+    if terrain is None:
+        raise RuntimeError("Terrain not found")
+    if terrain.type != "MESH":
+        raise RuntimeError("Terrain must be mesh")
+    if max_scale < min_scale:
+        raise RuntimeError("Invalid scale range")
+
+    sources = []
+    for name in source_obj_names:
+        obj = bpy.data.objects.get(name)
+        if obj is None:
+            raise RuntimeError(f"Source object '{name}' not found")
+        sources.append(obj)
+
+    col = get_or_create_collection(target_collection_name)
+    clear_collection(col)
+
+    placed_positions = []
+    placed = 0
+    tries = 0
+    max_tries = count * 40
+
+    while placed < count and tries < max_tries:
+        tries += 1
+
+        x = random.uniform(-area, area)
+        y = random.uniform(-area, area)
+
+        loc, face_index = raycast_to_terrain(terrain, x, y, z_start)
+        if loc is None:
+            continue
+
+        if use_vgroup:
+            w = vgroup_weight_at_face_avg(terrain, no_trees_vgroup, face_index)
+            if w > path_threshold:
+                continue
+
+        if min_distance > 0.0:
+            loc_vec = Vector(loc)
+            if any((loc_vec - p).length < min_distance for p in placed_positions):
+                continue
+            placed_positions.append(loc_vec)
+
+        src = random.choice(sources)
 
         new_obj = copy_with_children(src, col)
         new_obj.location = loc
@@ -247,14 +320,56 @@ class OBJECT_OT_clear_bushes(bpy.types.Operator):
         return {"FINISHED"}
 
 
-def menu_func(self, context):
-    self.layout.separator()
-    self.layout.label(text="Procedural Scatter")
-    self.layout.operator(OBJECT_OT_scatter_trees.bl_idname)
-    self.layout.operator(OBJECT_OT_clear_trees.bl_idname)
-    self.layout.separator()
-    self.layout.operator(OBJECT_OT_scatter_bushes.bl_idname)
-    self.layout.operator(OBJECT_OT_clear_bushes.bl_idname)
+class OBJECT_OT_scatter_flowers(bpy.types.Operator):
+    bl_idname = "object.scatter_flowers"
+    bl_label = "Scatter Flowers"
+    bl_options = {"REGISTER", "UNDO"}
+
+    count: bpy.props.IntProperty(name="Count", default=30, min=1, max=5000)
+    area: bpy.props.FloatProperty(name="Area", default=6.0, min=0.1)
+    z_start: bpy.props.FloatProperty(name="Ray start Z", default=1000.0)
+
+    min_scale: bpy.props.FloatProperty(name="Min scale", default=0.25, min=0.01)
+    max_scale: bpy.props.FloatProperty(name="Max scale", default=0.45, min=0.01)
+
+    use_vgroup: bpy.props.BoolProperty(name="Use NoTrees", default=True)
+    path_threshold: bpy.props.FloatProperty(name="Threshold", default=0.5, min=0.0, max=1.0)
+
+    min_distance: bpy.props.FloatProperty(name="Min distance", default=0.35, min=0.0)
+
+    def execute(self, context):
+        try:
+            placed, tries = scatter_flowers_on_terrain(
+                flower_names,
+                flower_collection,
+                self.count,
+                self.area,
+                self.z_start,
+                self.min_scale,
+                self.max_scale,
+                self.use_vgroup,
+                self.path_threshold,
+                self.min_distance
+            )
+        except Exception as e:
+            self.report({"ERROR"}, str(e))
+            return {"CANCELLED"}
+
+        self.report({"INFO"}, f"Flowers placed: {placed}")
+        return {"FINISHED"}
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+
+
+class OBJECT_OT_clear_flowers(bpy.types.Operator):
+    bl_idname = "object.clear_flowers"
+    bl_label = "Clear Flowers"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        clear_collection(get_collection(flower_collection))
+        return {"FINISHED"}
 
 
 classes = (
@@ -262,17 +377,17 @@ classes = (
     OBJECT_OT_clear_trees,
     OBJECT_OT_scatter_bushes,
     OBJECT_OT_clear_bushes,
+    OBJECT_OT_scatter_flowers,
+    OBJECT_OT_clear_flowers,
 )
 
 
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
-    bpy.types.VIEW3D_MT_object.append(menu_func)
 
 
 def unregister():
-    bpy.types.VIEW3D_MT_object.remove(menu_func)
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)
 
