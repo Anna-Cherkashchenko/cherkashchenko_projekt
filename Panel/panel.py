@@ -5,6 +5,9 @@ TREE_LEAVES_PREFIX = "leaves"
 BUSH_OBJECT_PREFIX = "Bush"
 FLOWER_COLLECTION_NAME = "Generated_Flowers"
 
+GREEN_MATERIAL_NAME = "Leaf"
+AUTUMN_MATERIAL_NAME = "Leaf.001"
+
 
 def ensure_props():
     bpy.types.Scene.forest_season = bpy.props.EnumProperty(
@@ -68,6 +71,33 @@ def set_collection_visibility(collection_name: str, visible: bool):
         obj.hide_render = not visible
 
 
+def set_leaf_materials_for_season(season):
+    green_mat = bpy.data.materials.get(GREEN_MATERIAL_NAME)
+    autumn_mat = bpy.data.materials.get(AUTUMN_MATERIAL_NAME)
+
+    if green_mat is None:
+        raise RuntimeError(f"Material '{GREEN_MATERIAL_NAME}' not found")
+    if autumn_mat is None:
+        raise RuntimeError(f"Material '{AUTUMN_MATERIAL_NAME}' not found")
+
+    if season in {"SPRING", "SUMMER"}:
+        target_mat = green_mat
+    else:
+        target_mat = autumn_mat
+
+    possible_old_names = {GREEN_MATERIAL_NAME, AUTUMN_MATERIAL_NAME}
+
+    for obj in bpy.data.objects:
+        if obj.type != "MESH":
+            continue
+        if not obj.data or not hasattr(obj.data, "materials"):
+            continue
+
+        for i, mat in enumerate(obj.data.materials):
+            if mat and mat.name in possible_old_names:
+                obj.data.materials[i] = target_mat
+
+
 class FOREST_OT_apply_season(bpy.types.Operator):
     bl_idname = "forest.apply_season"
     bl_label = "Apply Season"
@@ -96,6 +126,8 @@ class FOREST_OT_apply_season(bpy.types.Operator):
             set_bush_leaf_amount(BUSH_LEAF_AMOUNT_VISIBLE)
             set_collection_visibility(FLOWER_COLLECTION_NAME, True)
 
+        set_leaf_materials_for_season(season)
+
         self.report({"INFO"}, f"Season applied: {season}")
         return {"FINISHED"}
 
@@ -121,30 +153,34 @@ class FOREST_PT_panel(bpy.types.Panel):
         layout = self.layout
         sc = context.scene
 
-        layout.prop(sc, "forest_season")
-        layout.operator("forest.apply_season", icon="FILE_REFRESH")
+        box_season = layout.box()
+        box_season.label(text="Season")
+        box_season.prop(sc, "forest_season")
+        box_season.operator("forest.apply_season", icon="FILE_REFRESH")
 
-        layout.separator()
+        box_animal = layout.box()
+        box_animal.label(text="Animal")
+        box_animal.prop(sc, "forest_animal")
+        box_animal.operator("forest.update_animal", icon="OUTLINER_OB_ARMATURE")
 
-        layout.prop(sc, "forest_animal")
-        layout.operator("forest.update_animal", icon="OUTLINER_OB_ARMATURE")
+        box_scatter = layout.box()
+        box_scatter.label(text="Scatter Objects")
 
-        layout.separator()
-
-        box = layout.box()
-        box.label(text="Scatter Objects")
-
-        row = box.row(align=True)
+        row = box_scatter.row(align=True)
         row.operator("object.scatter_trees", icon="OUTLINER_OB_GROUP_INSTANCE")
         row.operator("object.clear_trees", icon="TRASH")
 
-        row = box.row(align=True)
+        row = box_scatter.row(align=True)
         row.operator("object.scatter_bushes", icon="OUTLINER_OB_GROUP_INSTANCE")
         row.operator("object.clear_bushes", icon="TRASH")
 
-        row = box.row(align=True)
+        row = box_scatter.row(align=True)
         row.operator("object.scatter_flowers", icon="OUTLINER_OB_GROUP_INSTANCE")
         row.operator("object.clear_flowers", icon="TRASH")
+
+        box_growth = layout.box()
+        box_growth.label(text="Growth Animation")
+        box_growth.operator("forest.animate_all_growth", icon="GRAPH")
 
 
 classes = (
