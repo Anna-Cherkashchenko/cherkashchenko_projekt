@@ -1,1 +1,1 @@
-
+Skript panel.py vytvára používateľský panel Forest Controls v bočnom paneli Blenderu (3D View). Panel umožňuje ovládať procedurálnu scénu lesa: meniť ročné obdobie, vybrať zviera, spúšťať skripty na automatické rozmiestňovanie stromov, kríkov a kvetov a tiež spustiť animáciu rastu rastlín. Skript zároveň mení vzhľad vegetácie v závislosti od zvoleného ročného obdobia (prítomnosť listov, zobrazovanie alebo skrývanie kvetov a zmena materiálu listov).
