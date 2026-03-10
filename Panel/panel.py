@@ -1,7 +1,8 @@
 import bpy
 
 BUSH_LEAF_AMOUNT_VISIBLE = 0.45454543828964233
-TREE_LEAVES_PREFIX = "leaves"
+TREE_LEAF_OBJECT_PREFIX = "leaves"
+BUSH_LEAF_OBJECT_PREFIX = "Leaf"
 BUSH_OBJECT_PREFIX = "Bush"
 FLOWER_COLLECTION_NAME = "Generated_Flowers"
 
@@ -41,7 +42,7 @@ def clear_props():
 
 def set_tree_leaves_visible(visible: bool):
     for obj in bpy.data.objects:
-        if obj.name.startswith(TREE_LEAVES_PREFIX):
+        if obj.name.startswith(TREE_LEAF_OBJECT_PREFIX):
             obj.hide_viewport = not visible
             obj.hide_render = not visible
 
@@ -71,6 +72,46 @@ def set_collection_visibility(collection_name: str, visible: bool):
         obj.hide_render = not visible
 
 
+def is_leaf_object(obj):
+    return (
+        obj.type == "MESH" and
+        (
+            obj.name.startswith(TREE_LEAF_OBJECT_PREFIX) or
+            obj.name.startswith(BUSH_LEAF_OBJECT_PREFIX)
+        )
+    )
+
+
+def switch_leaf_polygons_to_material(obj, target_material_name, seasonal_material_names):
+    if obj.type != "MESH" or obj.data is None:
+        return
+
+    mesh = obj.data
+
+    target_index = None
+    seasonal_indices = []
+
+    for i, mat in enumerate(mesh.materials):
+        if mat is None:
+            continue
+
+        if mat.name == target_material_name:
+            target_index = i
+
+        if mat.name in seasonal_material_names:
+            seasonal_indices.append(i)
+
+    if target_index is None:
+        return
+
+    if not seasonal_indices:
+        return
+
+    for poly in mesh.polygons:
+        if poly.material_index in seasonal_indices:
+            poly.material_index = target_index
+
+
 def set_leaf_materials_for_season(season):
     green_mat = bpy.data.materials.get(GREEN_MATERIAL_NAME)
     autumn_mat = bpy.data.materials.get(AUTUMN_MATERIAL_NAME)
@@ -81,21 +122,19 @@ def set_leaf_materials_for_season(season):
         raise RuntimeError(f"Material '{AUTUMN_MATERIAL_NAME}' not found")
 
     if season in {"SPRING", "SUMMER"}:
-        target_mat = green_mat
+        target_material_name = GREEN_MATERIAL_NAME
     else:
-        target_mat = autumn_mat
+        target_material_name = AUTUMN_MATERIAL_NAME
 
-    possible_old_names = {GREEN_MATERIAL_NAME, AUTUMN_MATERIAL_NAME}
+    seasonal_material_names = {GREEN_MATERIAL_NAME, AUTUMN_MATERIAL_NAME}
 
     for obj in bpy.data.objects:
-        if obj.type != "MESH":
-            continue
-        if not obj.data or not hasattr(obj.data, "materials"):
-            continue
-
-        for i, mat in enumerate(obj.data.materials):
-            if mat and mat.name in possible_old_names:
-                obj.data.materials[i] = target_mat
+        if is_leaf_object(obj):
+            switch_leaf_polygons_to_material(
+                obj,
+                target_material_name,
+                seasonal_material_names
+            )
 
 
 class FOREST_OT_apply_season(bpy.types.Operator):
